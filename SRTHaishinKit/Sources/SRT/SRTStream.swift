@@ -24,6 +24,8 @@ public actor SRTStream {
     package lazy var incoming = IncomingStream(self)
     package lazy var outgoing = OutgoingStream()
     private weak var connection: SRTConnection?
+    // SRT Tester (mytombrown fork): the raw MPEG-TS bytes, before TSReader.
+    private var rawInputContinuation: AsyncStream<Data>.Continuation?
 
     /// The error domain codes.
     public enum Error: Swift.Error {
@@ -125,6 +127,8 @@ public actor SRTStream {
         reader.clear()
         outgoing.stopRunning()
         Task { await incoming.stopRunning() }
+        rawInputContinuation?.finish()
+        rawInputContinuation = nil
         readyState = .idle
     }
 
@@ -136,7 +140,20 @@ public actor SRTStream {
         writer.expectedMedias = expectedMedias
     }
 
+    /// SRT Tester (mytombrown fork, branch srt-tester-raw-tap): every payload the
+    /// connection hands this stream, before the TS reader consumes it. A consumer
+    /// walks the MPEG-TS itself — PAT/PMT, descriptors, SCTE-35, captions — which
+    /// TSReader does not expose. Asking again replaces the previous consumer; the
+    /// stream finishes on close(). Newest 256 chunks are kept if the consumer lags.
+    public var rawInput: AsyncStream<Data> {
+        rawInputContinuation?.finish()
+        let (stream, continuation) = AsyncStream<Data>.makeStream(bufferingPolicy: .bufferingNewest(256))
+        rawInputContinuation = continuation
+        return stream
+    }
+
     func doInput(_ data: Data) {
+        rawInputContinuation?.yield(data)
         _ = reader.read(data)
     }
 }
