@@ -16,6 +16,8 @@ enum ESStreamType: UInt8 {
 
     case h264 = 0x1B
     case h265 = 0x24
+    /// SCTE-35 splice_info_sections (SRT Tester fork, SRT-803).
+    case scte35 = 0x86
 
     var headerSize: Int {
         switch self {

@@ -46,6 +46,20 @@ final class TSWriter {
         }
     }
 
+    /// SRT Tester fork (SRT-803): extra elementary streams the PMT announces besides
+    /// the audio and video the writer muxes itself — an SCTE-35 PID. The caller writes
+    /// that PID's packets with `writeRaw`; the writer only lists it.
+    var extraStreams: [ESSpecificData] = [] {
+        didSet { writeProgramIfNeeded() }
+    }
+    /// Program-level descriptors (SRT-803: `05 04 'CUEI'` registration for SCTE-35).
+    var programDescriptors = Data() {
+        didSet { pmt.programInfoDescriptors = programDescriptors }
+    }
+    /// The PTS (90 kHz) the writer last stamped on a video PES, or nil before the first
+    /// frame. A cue that wants to land ahead of the picture reads this (SRT-803).
+    private(set) var lastVideoPTS: Int64?
+
     private(set) var pat: TSProgramAssociation = {
         let PAT: TSProgramAssociation = .init()
         PAT.programs = [1: TSWriter.defaultPMTPID]
@@ -124,6 +138,8 @@ final class TSWriter {
             if var pes = PacketizedElementaryStream(sampleBuffer, timeStamp: videoTimeStamp) {
                 let timestamp = sampleBuffer.decodeTimeStamp == .invalid ?
                     sampleBuffer.presentationTimeStamp : sampleBuffer.decodeTimeStamp
+                // Same arithmetic as PESOptionalHeader.setTimestamp (SRT-803).
+                lastVideoPTS = Int64((sampleBuffer.presentationTimeStamp.seconds + PESOptionalHeader.offset.seconds - videoTimeStamp.seconds) * Double(TSTimestamp.resolution))
                 pes.streamID = 224
                 writePacketizedElementaryStream(
                     Self.defaultVideoPID,
@@ -147,6 +163,8 @@ final class TSWriter {
         pat.programs.removeAll()
         pat.programs = [1: Self.defaultPMTPID]
         pmt = TSProgramMap()
+        pmt.programInfoDescriptors = programDescriptors
+        lastVideoPTS = nil
         videoTimeStamp = .invalid
         audioTimeStamp = .invalid
         clockTimeStamp = .zero
@@ -192,8 +210,17 @@ final class TSWriter {
         continuation?.yield(data)
     }
 
+    /// Ready-made transport packets (a PID from `extraStreams`) go out in order with
+    /// the muxed audio and video (SRT-803). The caller keeps that PID's continuity counter.
+    func writeRaw(_ packets: Data) {
+        write(packets)
+    }
+
     private func writeProgram() {
         pmt.PCRPID = pcrPID
+        for extra in extraStreams where !pmt.elementaryStreamSpecificData.contains(where: { $0.elementaryPID == extra.elementaryPID }) {
+            pmt.elementaryStreamSpecificData.append(extra)
+        }
         var bytes = Data()
         var packets: [TSPacket] = []
         packets.append(contentsOf: pat.arrayOfPackets(Self.defaultPATPID))

@@ -156,6 +156,33 @@ public actor SRTStream {
         rawInputContinuation?.yield(data)
         _ = reader.read(data)
     }
+
+    // MARK: - SCTE-35 on the way out (SRT Tester fork, SRT-803)
+
+    /// Announce an SCTE-35 PID in the outgoing PMT (stream_type 0x86, program-level
+    /// CUEI registration). Set before `publish()`; nil removes it. The stream does not
+    /// write cues itself — hand it finished transport packets with `sendRawTS`.
+    public func setSCTE35(pid: UInt16?) {
+        if let pid {
+            var es = ESSpecificData()
+            es.streamType = .scte35
+            es.elementaryPID = pid
+            writer.extraStreams = [es]
+            writer.programDescriptors = Data([0x05, 0x04, 0x43, 0x55, 0x45, 0x49])   // registration_descriptor "CUEI"
+        } else {
+            writer.extraStreams = []
+            writer.programDescriptors = Data()
+        }
+    }
+
+    /// Ready-made 188-byte transport packets, sent in order with the muxed media.
+    public func sendRawTS(_ packets: Data) {
+        guard readyState == .publishing else { return }
+        writer.writeRaw(packets)
+    }
+
+    /// The PTS (90 kHz) the last outgoing video frame carried; nil before the first frame.
+    public var outgoingVideoPTS: Int64? { writer.lastVideoPTS }
 }
 
 extension SRTStream: _Stream {

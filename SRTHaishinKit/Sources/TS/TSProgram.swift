@@ -162,6 +162,9 @@ final class TSProgramMap: TSProgram {
 
     var PCRPID: UInt16 = 0
     var programInfoLength: UInt16 = 0
+    /// Program-level descriptors written after program_info_length (SRT Tester fork,
+    /// SRT-803: the CUEI registration that announces SCTE-35). Sets programInfoLength.
+    var programInfoDescriptors = Data()
     var elementaryStreamSpecificData: [ESSpecificData] = []
 
     override init() {
@@ -183,9 +186,11 @@ final class TSProgramMap: TSProgram {
             for essd in elementaryStreamSpecificData {
                 bytes.append(essd.data)
             }
+            programInfoLength = UInt16(programInfoDescriptors.count)
             return ByteArray()
                 .writeUInt16(PCRPID | 0xe000)
                 .writeUInt16(programInfoLength | 0xf000)
+                .writeBytes(programInfoDescriptors)
                 .writeBytes(bytes)
                 .data
         }
