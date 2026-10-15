@@ -17,6 +17,9 @@ public actor SRTStream {
     @Published public private(set) var readyState: StreamReadyState = .idle
     public private(set) var videoTrackId: UInt8? = UInt8.max
     public private(set) var audioTrackId: UInt8? = UInt8.max
+    /// Receive selection (SRT Tester, Tom 10/15): see `selectReceive(audioIndex:video:)`.
+    private var receiveAudioIndex: Int? = 0
+    private var receiveVideo = true
     package var outputs: [any StreamOutput] = []
     package var bitRateStrategy: (any StreamBitRateStrategy)?
     private lazy var writer = TSWriter()
@@ -256,9 +259,6 @@ extension SRTStream: MediaMixerOutput {
         receiveAudioIndex = audioIndex
         receiveVideo = video
     }
-    private var receiveAudioIndex: Int? = 0
-    private var receiveVideo = true
-
     public func selectTrack(_ id: UInt8?, mediaType: CMFormatDescription.MediaType) {
         switch mediaType {
         case .audio:
