@@ -112,17 +112,18 @@ public actor SRTStream {
         Task {
             await incoming.startRunning()
             // SRT Tester (Tom 10/15: slow, jumpy audio from a TVU stream with two AAC tracks):
-            // every track went into one decoder. Play the first audio and first video track.
-            var audioPID: UInt16?
+            // every track went into one decoder. One audio track plays — the one chosen with
+            // `selectReceive(audioIndex:video:)`, counted in PID order — and the first video.
+            var audioPIDs: [UInt16] = []
             var videoPID: UInt16?
             for await (pid, sampleBuffer) in reader.output {
                 switch sampleBuffer.formatDescription?.mediaType {
                 case .audio?:
-                    if audioPID == nil { audioPID = pid }
-                    guard audioPID == pid else { continue }
+                    if !audioPIDs.contains(pid) { audioPIDs.append(pid); audioPIDs.sort() }
+                    guard let index = receiveAudioIndex, index < audioPIDs.count, audioPIDs[index] == pid else { continue }
                 case .video?:
                     if videoPID == nil { videoPID = pid }
-                    guard videoPID == pid else { continue }
+                    guard receiveVideo, videoPID == pid else { continue }
                 default:
                     break
                 }
@@ -249,6 +250,15 @@ extension SRTStream: _Stream {
 
 extension SRTStream: MediaMixerOutput {
     // MARK: MediaMixerOutput
+    /// Receive: which audio track plays (0 = first by PID, nil = none) and whether video
+    /// is decoded at all. Takes effect on the next frame (SRT Tester, Tom 10/15).
+    public func selectReceive(audioIndex: Int?, video: Bool) {
+        receiveAudioIndex = audioIndex
+        receiveVideo = video
+    }
+    private var receiveAudioIndex: Int? = 0
+    private var receiveVideo = true
+
     public func selectTrack(_ id: UInt8?, mediaType: CMFormatDescription.MediaType) {
         switch mediaType {
         case .audio:
