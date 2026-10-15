@@ -116,8 +116,10 @@ final class TSReader {
             let units = nalUnitReader.read(&pes.data, type: H264NALUnit.self)
             // SRT Tester (Tom 10/15: no video from a TVU encoder): broadcast encoders split a
             // picture into several slices; keeping only the first gave the decoder a sliver
-            // of each frame. Keep every slice/IDR unit, each behind a start code.
-            let pictures = units.filter { $0.type == .idr || $0.type == .slice }
+            // of each frame. Keep every slice/IDR unit, each behind a start code — in stream
+            // order: NALUnitReader lists a frame's units last-first (the AUD comes out last),
+            // and a decoder rejects a frame whose slices arrive backwards.
+            let pictures = units.reversed().filter { $0.type == .idr || $0.type == .slice }
             if !pictures.isEmpty {
                 var data = Data()
                 for unit in pictures {
