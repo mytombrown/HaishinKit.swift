@@ -20,7 +20,10 @@ public final actor AudioPlayer {
             return
         }
         if let format {
-            audioEngine.connect(avPlayerNode, to: audioEngine.outputNode, format: format)
+            // SRT Tester (Tom 10/15: "jumpy slow playing audio"): straight to the output node,
+            // 48 kHz stream audio met a 44.1 kHz device with no rate conversion. The main
+            // mixer converts to the device's rate.
+            audioEngine.connect(avPlayerNode, to: audioEngine.mainMixerNode, format: format)
             if !audioEngine.isRunning {
                 try? audioEngine.start()
             }
