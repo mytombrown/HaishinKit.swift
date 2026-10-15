@@ -65,6 +65,12 @@ final class AudioCodec {
                 }
                 let sampleSize = CMSampleBufferGetSampleSize(sampleBuffer, at: i)
                 let byteCount = sampleSize - ADTSHeader.size
+                // SRT Tester (Tom 10/15): a packet bigger than the buffer made AVAudioBuffer
+                // raise (setByteLength) and the app aborted. Skip a packet that can't fit.
+                guard byteCount > 0, byteCount <= Int(buffer.maximumPacketSize) else {
+                    offset += sampleSize
+                    continue
+                }
                 buffer.packetDescriptions?.pointee = AudioStreamPacketDescription(mStartOffset: 0, mVariableFramesInPacket: 0, mDataByteSize: UInt32(byteCount))
                 buffer.packetCount = 1
                 buffer.byteLength = UInt32(byteCount)
@@ -144,7 +150,10 @@ final class AudioCodec {
             buffer?.frameLength = Self.defaultFrameCapacity
             return buffer
         default:
-            return AVAudioCompressedBuffer(format: inputFormat, packetCapacity: 1, maximumPacketSize: 1024)
+            // AAC allows up to 6,144 bytes per channel per frame; 1,024 was too small for
+            // high-bitrate streams (SRT Tester crash, Tom 10/15).
+            let channels = max(1, Int(inputFormat.channelCount))
+            return AVAudioCompressedBuffer(format: inputFormat, packetCapacity: 1, maximumPacketSize: 6_144 * channels)
         }
     }
 
