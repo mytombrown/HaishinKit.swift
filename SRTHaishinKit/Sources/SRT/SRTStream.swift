@@ -111,8 +111,22 @@ public actor SRTStream {
         await connection.recv()
         Task {
             await incoming.startRunning()
-            for await buffer in reader.output {
-                await incoming.append(buffer.1)
+            // SRT Tester (Tom 10/15: slow, jumpy audio from a TVU stream with two AAC tracks):
+            // every track went into one decoder. Play the first audio and first video track.
+            var audioPID: UInt16?
+            var videoPID: UInt16?
+            for await (pid, sampleBuffer) in reader.output {
+                switch sampleBuffer.formatDescription?.mediaType {
+                case .audio?:
+                    if audioPID == nil { audioPID = pid }
+                    guard audioPID == pid else { continue }
+                case .video?:
+                    if videoPID == nil { videoPID = pid }
+                    guard videoPID == pid else { continue }
+                default:
+                    break
+                }
+                await incoming.append(sampleBuffer)
             }
         }
         readyState = .playing

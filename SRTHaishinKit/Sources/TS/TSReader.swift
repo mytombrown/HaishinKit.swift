@@ -114,9 +114,16 @@ final class TSReader {
         switch data.streamType {
         case .h264:
             let units = nalUnitReader.read(&pes.data, type: H264NALUnit.self)
-            if let unit = units.first(where: { $0.type == .idr || $0.type == .slice }) {
-                var data = Data([0x00, 0x00, 0x00, 0x01])
-                data.append(unit.data)
+            // SRT Tester (Tom 10/15: no video from a TVU encoder): broadcast encoders split a
+            // picture into several slices; keeping only the first gave the decoder a sliver
+            // of each frame. Keep every slice/IDR unit, each behind a start code.
+            let pictures = units.filter { $0.type == .idr || $0.type == .slice }
+            if !pictures.isEmpty {
+                var data = Data()
+                for unit in pictures {
+                    data.append(contentsOf: [0x00, 0x00, 0x00, 0x01])
+                    data.append(unit.data)
+                }
                 pes.data = data
             }
             isNotSync = !units.contains { $0.type == .idr }
